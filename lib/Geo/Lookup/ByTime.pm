@@ -3,15 +3,227 @@ package Geo::Lookup::ByTime;
 use warnings;
 use strict;
 use Carp;
+use Scalar::Util qw(blessed);
+use base qw(Exporter);
 
-use version; $VERSION = qv('0.0.3');
+our @EXPORT_OK = qw(hav_distance);
+
+use version; our $VERSION = qv('0.0.1');
+
+my $EARTH_RADIUS = 6378137.0;
+my $PI           = 4 * atan2(1, 1);
+my $DEG_TO_RAD   = $PI / 180.0;
+my $RAD_TO_DEG   = 180.0 / $PI;
+
+sub new {
+    my $class = shift;
+    my $self = {
+        points      => [ ],
+        need_sort   => 0
+    };
+    
+    bless($self, $class);
+    
+    if (@_) {
+        $self->add_points(@_);
+    }
+    
+    return $self;
+}
+
+sub add_points {
+    my $self = shift;
+
+    $self->{need_sort}++ if @_;
+
+    for my $pt (@_) {
+        if (blessed($pt) && $pt->can('latitude') && 
+            $pt->can('longitude') && $pt->can('time')) {
+            push @{$self->{points}}, {
+                lat     => $pt->latitude(),
+                lon     => $pt->longitude(),
+                time    => $pt->time(),
+                orig    => $pt
+            };
+        } elsif (ref($pt) eq 'CODE') {
+            my @pts = ( );
+            while (my $ipt = $pt->()) {
+                push @pts, $ipt;
+            }
+            $self->add_points(@pts);
+        } elsif (ref($pt) eq 'ARRAY') {
+            $self->add_points(@{$pt});
+        } elsif (ref($pt) eq 'HASH') {
+            croak("Point hashes must have the following keys: lat, lon, time\n")
+                unless exists($pt->{lat}) && exists($pt->{lon}) && exists($pt->{time});
+            push @{$self->{points}}, $pt;
+        } else {
+            croak("Don't know how to add " . ($pt ? $pt : '(undef)'));
+        }
+    }
+}
+
+sub get_points {
+    my $self = shift;
+    
+    if ($self->{need_sort}) {
+        my $np = [ 
+            sort { $a->{time} <=> $b->{time} }
+            grep { defined($_->{lat}) && 
+                   defined($_->{lon}) && 
+                   defined($_->{time}) } @{$self->{points}}
+        ];
+        $self->{points}    = $np;
+        $self->{need_sort} = 0;
+    }
+    
+    return $self->{points};
+}
+
+# Returns the index of the first point with time >= the supplied time
+sub _search {
+    my $pts  = shift;
+    my $time = shift;
+
+    my $max  = scalar(@{$pts});
+    my ($lo, $mid, $hi) = ( 0, 0, $max-1 );
+
+    TRY:
+    while ($lo <= $hi) {
+        $mid = int(($lo + $hi) / 2);
+        my $cmp = $pts->[$mid]->{time} <=> $time;
+        if ($cmp < 0) {
+            $lo = $mid + 1;
+        } elsif ($cmp > 0) {
+            $hi = $mid - 1;
+        } else {
+            last TRY;
+        }
+    }
+
+    while ($mid < $max && $pts->[$mid]->{time} < $time) {
+        $mid++;
+    }
+
+    return ($mid < $max) ? $mid : undef;
+}
+
+sub _interp {
+    my ($lo, $mid, $hi, $val1, $val2) = @_;
+    confess "$lo <= $mid <= $hi !"
+        unless $lo <= $mid && $mid <= $hi;
+    my $scale = $hi  - $lo;
+    my $posn  = $mid - $lo;
+    return ($val1 * ($scale - $posn) + $val2 * $posn) / $scale;
+}
+
+sub nearest {
+    my $self     = shift;
+    my $time     = shift;
+    my $max_dist = shift;
+
+    my $pts      = $self->get_points();
+    my $pos      = _search($pts, $time);
+
+    return unless defined($pos);
+
+    if ($pts->[$pos]->{time} == $time) {
+        # Exact match - just return the point
+        my $pt = {
+            lat     => $pts->[$pos]->{lat},
+            lon     => $pts->[$pos]->{lon},
+            time    => $time
+        };
+
+        return wantarray ? ( $pt, $pts->[$pos]->{orig} || $pts->[$pos], 0 ) : $pt;
+    }
+
+    # If we're at the first point we can't
+    # interpolate with anything.
+    return if $pos == 0;
+
+    my ($p1, $p2) = @$pts[$pos-1, $pos];
+
+    # Linear interpolation between nearest points
+    my $lat = _interp($p1->{time}, $time, $p2->{time}, $p1->{lat}, $p2->{lat});
+    my $lon = _interp($p1->{time}, $time, $p2->{time}, $p1->{lon}, $p2->{lon});
+
+    my $pt = {
+        lat     => $lat,
+        lon     => $lon,
+        time    => $time
+    };
+
+    my $best_dist   = 0;
+    my $best        = undef;
+
+    # Compute nearest if we need to return it or check proximity
+    if (wantarray || defined($max_dist)) {
+        my $d1 = abs($pt->{time} - $p1->{time});
+        my $d2 = abs($pt->{time} - $p2->{time});
+
+        $best = ($d1 < $d2) ? $p1 : $p2;
+        $best_dist = hav_distance($pt, $best);
+
+        # Nearest point out of range?
+        return if defined($max_dist) && $best_dist > $max_dist;
+    }
+
+    # Return a synthetic point
+    return wantarray ? ( $pt, $best->{orig} || $best, $best_dist ) : $pt;
+}
+
+sub _deg {
+    return map { $_ * $RAD_TO_DEG } @_;
+}
+
+sub _rad {
+    return map { $_ * $DEG_TO_RAD } @_;
+}
+
+# From
+#  http://perldoc.perl.org/functions/sin.html
+sub _asin {
+    atan2($_[0], sqrt(1 - $_[0] * $_[0]))
+}
+
+# Not a method
+sub hav_distance {
+    my $dist = 0;
+    my ($lat1, $lon1);
+    while (my $pt = shift) {
+        my ($lat2, $lon2) = _rad($pt->{lat}, $pt->{lon});
+        if (defined($lat1)) {
+            my $sdlat = sin(($lat1 - $lat2) / 2.0);
+            my $sdlon = sin(($lon1 - $lon2) / 2.0);
+            my $res   = sqrt($sdlat * $sdlat
+                             + cos($lat1) * cos($lat2) * $sdlon * $sdlon);
+            if ($res > 1.0) {
+                $res = 1.0;
+            } elsif ($res < -1.0) {
+                $res = -1.0;
+            }
+            $dist += 2.0 * _asin($res);
+        }
+        ($lat1, $lon1) = ($lat2, $lon2);
+    }
+
+    return $dist * $EARTH_RADIUS;
+}
+
+sub time_range {
+    my $self = shift;
+    my $pts  = $self->get_points();
+    return unless @{$pts};
+    return ( $pts->[0]->{time}, $pts->[-1]->{time} );
+}
 
 1;
 __END__
 
 =head1 NAME
 
-Geo::Lookup::ByTime - [One line description of module's purpose here]
+Geo::Lookup::ByTime - Lookup location by time
 
 =head1 VERSION
 
@@ -20,90 +232,97 @@ This document describes Geo::Lookup::ByTime version 0.0.1
 =head1 SYNOPSIS
 
     use Geo::Lookup::ByTime;
+    
+    $lookup = Geo::Lookup::ByTime->new( [ points ] );
+    my $pt = $lookup->nearest( $tm );
 
-=for author to fill in:
-    Brief code example(s) here showing commonest usage(s).
-    This section will be as far as many users bother reading
-    so make it as educational and exeplary as possible.
-  
 =head1 DESCRIPTION
 
-=for author to fill in:
-    Write a full description of the module and its features here.
-    Use subsections (=head2, =head3) as appropriate.
+Given a set of timestamped locations guess the location at a
+particular time.
 
 =head1 INTERFACE 
 
-=for author to fill in:
-    Write a separate section listing the public components of the modules
-    interface. These normally consist of either subroutines that may be
-    exported, or methods that may be called on objects belonging to the
-    classes provided by the module.
-
-=head1 DIAGNOSTICS
-
-=for author to fill in:
-    List every single error and warning message that the module can
-    generate (even the ones that will "never happen"), with a full
-    explanation of each problem, one or more likely causes, and any
-    suggested remedies.
-
 =over
 
-=item C<< Error message here, perhaps with %s placeholders >>
+=item C<new( [ points ] )>
 
-[Description of error here]
+Create a new object optionally supplying a list of points. The points
+may be supplied as an array or as a reference to an array. Each point
+may be a reference to a hash containing at least the keys C<lat>, C<lon>
+and C<time> or a reference to an object that supports accessor methods
+called C<latitude>, C<longitude> and C<time>. 
 
-=item C<< Another error message here >>
+If a coderef is supplied it is assumed to be an iterator that may be
+called repeatedly to yield a set of points.
 
-[Description of error here]
+=item C<add_points( [ points ] )>
 
-[Et cetera, et cetera]
+Add points. The specification for what constitutes a point is the same
+as for C<new>.
+
+=item C<nearest( $time [ , $max_dist ] )>
+
+Return a hash indicating the estimated position at the specified time.
+The returned hash has C<lat>, C<lon> and C<time> keys like this:
+
+    my $best = {
+        lat     => 54.29344,
+        lon     => -2.02393,
+        time    => $time
+    };
+
+Returns C<undef> if the position can't be computed. By default a
+position will be calculated for any point that lies within the range of
+time covered by the reference points. Optionally C<$max_dist> may
+be specified in which case C<undef> will be returned if the closest
+real point is more than that many metres away from the computed point.
+
+In an array context returns a list containing the synthetic point
+at the specified time (i.e. the value that would be returned in
+scalar context), the closest real point and the distance between
+the two in metres
+
+    my ($best, $nearest, $dist) = $lookup->nearest( $tm );
+
+=item C<get_points()>
+
+Return a reference to an array containing all the points in ascending
+time order.
+
+=item C<time_range()>
+
+Return as a two element list the time range from earliest to latest of
+the points in the index. Returns C<undef> if the index is empty.
+
+=item C<hav_distance($pt, ...)>
+
+Exportable function. Computes the Haversine distance in metres along the
+line described by the points passed in. Points must be references to hashes
+with keys C<lat> and C<lon>.
 
 =back
 
-=head1 CONFIGURATION AND ENVIRONMENT
+=head1 DIAGNOSTICS
 
-=for author to fill in:
-    A full explanation of any configuration system(s) used by the
-    module, including the names and locations of any configuration
-    files, and the meaning of any environment variables or properties
-    that can be set. These descriptions must also include details of any
-    configuration language used.
-  
-Geo::Lookup::ByTime requires no configuration files or environment variables.
+=over
 
-=head1 DEPENDENCIES
+=item C<< Point hashes must have the following keys: lat, lon, time >>
 
-=for author to fill in:
-    A list of all the other modules that this module relies upon,
-    including any restrictions on versions, and an indication whether
-    the module is part of the standard Perl distribution, part of the
-    module's distribution, or must be installed separately. ]
+You attempted to add as a point a hash that didn't have the necessary
+keys. Each point must have at least C<lat>, C<lon> and C<time>.
 
-None.
+=item C<< Don't know how to add %s >>
 
-=head1 INCOMPATIBILITIES
+Points can be added by supplying a list of objects that behave like
+points (i.e. have accessors called C<latitude>, C<longitude> and
+C<time>), references to hashes with the keys C<lat>, C<lon> and C<time>,
+iterators that return a stream of point like objects or arrays of any of
+the above. You tried to add something other than one of those.
 
-=for author to fill in:
-    A list of any modules that this module cannot be used in conjunction
-    with. This may be due to name conflicts in the interface, or
-    competition for system or program resources, or due to internal
-    limitations of Perl (for example, many modules that use source code
-    filters are mutually incompatible).
-
-None reported.
+=back
 
 =head1 BUGS AND LIMITATIONS
-
-=for author to fill in:
-    A list of known problems with the module, together with some
-    indication Whether they are likely to be fixed in an upcoming
-    release. Also a list of restrictions on the features the module
-    does provide: data types that cannot be handled, performance issues
-    and the circumstances in which they may arise, practical
-    limitations on the size of data sets, special cases that are not
-    (yet) handled, etc.
 
 No bugs have been reported.
 

@@ -6,5 +6,8 @@ Makefile.PL
 README
 lib/Geo/Lookup/ByTime.pm
 t/00.load.t
+t/01.add-points.t
+t/02.hav-dist.t
+t/03.nearest.t
 t/pod-coverage.t
 t/pod.t
