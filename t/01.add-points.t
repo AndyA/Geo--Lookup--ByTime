@@ -1,7 +1,7 @@
 use Test::More tests => 103;
 
 BEGIN {
-    use_ok( 'Geo::Lookup::ByTime' );
+    use_ok('Geo::Lookup::ByTime');
 }
 
 package Point;
@@ -12,15 +12,15 @@ sub new {
     return bless($self, $class);
 }
 
-sub latitude  { return $_[0]->{lat};  }
-sub longitude { return $_[0]->{lon};  }
+sub latitude  { return $_[0]->{lat}; }
+sub longitude { return $_[0]->{lon}; }
 sub time      { return $_[0]->{time}; }
 
 package main;
 
-my $init_time     = time();
-my $init_lat      = 54.0;
-my $init_lon      = -2.0;
+my $init_time = time();
+my $init_lat  = 54.0;
+my $init_lon  = -2.0;
 
 my ($time, $lat, $lon);
 
@@ -32,9 +32,9 @@ sub restart {
 sub iter {
     return if $lat >= 55.0;
     my $pt = {
-        lat     => $lat,
-        lon     => $lon,
-        time    => $time
+        lat  => $lat,
+        lon  => $lon,
+        time => $time
     };
     $lat += 0.01;
     $lon += 0.02;
@@ -44,9 +44,9 @@ sub iter {
 
 restart();
 
-my @p1 = reverse map { iter() } 1..10;
-my @p2 = map { iter() } 1..10;
-my @p3 = map { Point->new(iter()) } 1..10;
+my @p1 = reverse map { iter() } 1 .. 10;
+my @p2 = map         { iter() } 1 .. 10;
+my @p3 = map         { Point->new(iter()) } 1 .. 10;
 
 my $lookup = Geo::Lookup::ByTime->new(@p1);
 
@@ -56,7 +56,7 @@ is_deeply($lookup->get_points(), \@p1, 'array to constructor');
 $lookup->add_points(\@p3, @p2, \&iter);
 
 restart();
-my @pall = ( );
+my @pall = ();
 while (my $pt = iter()) {
     unshift @pall, $pt;
 }

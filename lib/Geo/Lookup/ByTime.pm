@@ -8,7 +8,7 @@ use base qw(Exporter);
 
 our @EXPORT_OK = qw(hav_distance);
 
-use version; our $VERSION = qv('0.0.1');
+use version; our $VERSION = qv('0.0.2');
 
 my $EARTH_RADIUS = 6378137.0;
 my $PI           = 4 * atan2(1, 1);
@@ -58,7 +58,8 @@ sub add_points {
                 unless exists($pt->{lat}) && exists($pt->{lon}) && exists($pt->{time});
             push @{$self->{points}}, $pt;
         } else {
-            croak("Don't know how to add " . ($pt ? $pt : '(undef)'));
+            croak("Don't know how to add " 
+                . (defined($pt) ? $pt : '(undef)'));
         }
     }
 }
@@ -227,13 +228,13 @@ Geo::Lookup::ByTime - Lookup location by time
 
 =head1 VERSION
 
-This document describes Geo::Lookup::ByTime version 0.0.1
+This document describes Geo::Lookup::ByTime version 0.0.2
 
 =head1 SYNOPSIS
 
     use Geo::Lookup::ByTime;
     
-    $lookup = Geo::Lookup::ByTime->new( [ points ] );
+    $lookup = Geo::Lookup::ByTime->new( @points );
     my $pt = $lookup->nearest( $tm );
 
 =head1 DESCRIPTION
