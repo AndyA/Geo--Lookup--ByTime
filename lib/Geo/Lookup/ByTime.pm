@@ -49,6 +49,11 @@ sub add_points {
             my @pts = ( );
             while (my $ipt = $pt->()) {
                 push @pts, $ipt;
+                if (@pts >= 100) {
+                    # Add points 100 at a time.
+                    $self->add_points(@pts);
+                    @pts = ( );
+                }
             }
             $self->add_points(@pts);
         } elsif (ref($pt) eq 'ARRAY') {
