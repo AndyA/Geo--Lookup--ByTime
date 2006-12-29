@@ -3,6 +3,7 @@ use warnings;
 use ExtUtils::MakeMaker;
 
 WriteMakefile(
+    (MM->can('signature_target') ? (SIGN => 1) : ()),
     NAME                => 'Geo::Lookup::ByTime',
     AUTHOR              => 'Andy Armstrong <andy@hexten.net>',
     VERSION_FROM        => 'lib/Geo/Lookup/ByTime.pm',
