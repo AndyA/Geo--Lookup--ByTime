@@ -8,7 +8,7 @@ use base qw(Exporter);
 
 our @EXPORT_OK = qw(hav_distance);
 
-use version; our $VERSION = qv('0.0.2');
+use version; our $VERSION = qv('0.0.3');
 
 my $EARTH_RADIUS = 6_378_137.0;
 my $PI           = 4 * atan2(1, 1);
@@ -235,7 +235,7 @@ Geo::Lookup::ByTime - Lookup location by time
 
 =head1 VERSION
 
-This document describes Geo::Lookup::ByTime version 0.0.2
+This document describes Geo::Lookup::ByTime version 0.0.3
 
 =head1 SYNOPSIS
 

@@ -1,10 +1,9 @@
 Build.PL
 Changes
-MANIFEST
-META.yml # Will be created by "make dist"
-Makefile.PL
-README
 lib/Geo/Lookup/ByTime.pm
+Makefile.PL
+MANIFEST
+README
 t/00.load.t
 t/01.add-points.t
 t/02.hav-dist.t
