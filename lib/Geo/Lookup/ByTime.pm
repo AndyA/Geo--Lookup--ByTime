@@ -8,12 +8,12 @@ use base qw(Exporter);
 
 our @EXPORT_OK = qw(hav_distance);
 
-our $VERSION = '0.0.3';
+our $VERSION = '0.10';
 
-my $EARTH_RADIUS = 6_378_137.0;
-my $PI           = 4 * atan2( 1, 1 );
-my $DEG_TO_RAD   = $PI / 180.0;
-my $RAD_TO_DEG   = 180.0 / $PI;
+use constant EARTH_RADIUS => 6_378_137.0;
+use constant PI           => 4 * atan2( 1, 1 );
+use constant DEG_TO_RAD   => PI / 180.0;
+use constant RAD_TO_DEG   => 180.0 / PI;
 
 sub new {
     my $class = shift;
@@ -203,11 +203,11 @@ sub nearest {
 }
 
 sub _deg {
-    return map { $_ * $RAD_TO_DEG } @_;
+    return map { $_ * RAD_TO_DEG } @_;
 }
 
 sub _rad {
-    return map { $_ * $DEG_TO_RAD } @_;
+    return map { $_ * DEG_TO_RAD } @_;
 }
 
 # From
@@ -238,7 +238,7 @@ sub hav_distance {
         ( $lat1, $lon1 ) = ( $lat2, $lon2 );
     }
 
-    return $dist * $EARTH_RADIUS;
+    return $dist * EARTH_RADIUS;
 }
 
 sub time_range {
@@ -257,7 +257,7 @@ Geo::Lookup::ByTime - Lookup location by time
 
 =head1 VERSION
 
-This document describes Geo::Lookup::ByTime version 0.0.3
+This document describes Geo::Lookup::ByTime version 0.10
 
 =head1 SYNOPSIS
 
@@ -401,7 +401,3 @@ RENDERED INACCURATE OR LOSSES SUSTAINED BY YOU OR THIRD PARTIES OR A
 FAILURE OF THE SOFTWARE TO OPERATE WITH ANY OTHER SOFTWARE), EVEN IF
 SUCH HOLDER OR OTHER PARTY HAS BEEN ADVISED OF THE POSSIBILITY OF
 SUCH DAMAGES.
-/bin/bash: -c: line 18: unexpected EOF while looking for matching ``'
-/bin/bash: -c: line 35: syntax error: unexpected end of file
-/bin/bash: -c: line 18: unexpected EOF while looking for matching ``'
-/bin/bash: -c: line 35: syntax error: unexpected end of file
