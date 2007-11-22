@@ -8,26 +8,26 @@ use base qw(Exporter);
 
 our @EXPORT_OK = qw(hav_distance);
 
-use version; our $VERSION = qv('0.0.3');
+our $VERSION = '0.0.3';
 
 my $EARTH_RADIUS = 6_378_137.0;
-my $PI           = 4 * atan2(1, 1);
+my $PI           = 4 * atan2( 1, 1 );
 my $DEG_TO_RAD   = $PI / 180.0;
 my $RAD_TO_DEG   = 180.0 / $PI;
 
 sub new {
     my $class = shift;
-    my $self = {
-        points      => [ ],
-        need_sort   => 0
+    my $self  = {
+        points    => [],
+        need_sort => 0
     };
-    
-    bless($self, $class);
-    
-    if (@_) {
-        $self->add_points(@_);
+
+    bless( $self, $class );
+
+    if ( @_ ) {
+        $self->add_points( @_ );
     }
-    
+
     return $self;
 }
 
@@ -36,35 +36,46 @@ sub add_points {
 
     $self->{need_sort}++ if @_;
 
-    for my $pt (@_) {
-        if (blessed($pt) && $pt->can('latitude') && 
-            $pt->can('longitude') && $pt->can('time')) {
-            push @{$self->{points}}, {
-                lat     => $pt->latitude(),
-                lon     => $pt->longitude(),
-                time    => $pt->time(),
-                orig    => $pt
-            };
-        } elsif (ref($pt) eq 'CODE') {
-            my @pts = ( );
-            while (my $ipt = $pt->()) {
+    for my $pt ( @_ ) {
+        if (   blessed( $pt )
+            && $pt->can( 'latitude' )
+            && $pt->can( 'longitude' )
+            && $pt->can( 'time' ) ) {
+            push @{ $self->{points} },
+              {
+                lat  => $pt->latitude(),
+                lon  => $pt->longitude(),
+                time => $pt->time(),
+                orig => $pt
+              };
+        }
+        elsif ( ref( $pt ) eq 'CODE' ) {
+            my @pts = ();
+            while ( my $ipt = $pt->() ) {
                 push @pts, $ipt;
-                if (@pts >= 100) {
+                if ( @pts >= 100 ) {
                     # Add points 100 at a time.
-                    $self->add_points(@pts);
-                    @pts = ( );
+                    $self->add_points( @pts );
+                    @pts = ();
                 }
             }
-            $self->add_points(@pts);
-        } elsif (ref($pt) eq 'ARRAY') {
-            $self->add_points(@{$pt});
-        } elsif (ref($pt) eq 'HASH') {
-            croak("Point hashes must have the following keys: lat, lon, time\n")
-                unless exists($pt->{lat}) && exists($pt->{lon}) && exists($pt->{time});
-            push @{$self->{points}}, $pt;
-        } else {
-            croak("Don't know how to add " 
-                . (defined($pt) ? $pt : '(undef)'));
+            $self->add_points( @pts );
+        }
+        elsif ( ref( $pt ) eq 'ARRAY' ) {
+            $self->add_points( @{$pt} );
+        }
+        elsif ( ref( $pt ) eq 'HASH' ) {
+            croak(
+                "Point hashes must have the following keys: lat, lon, time\n"
+              )
+              unless exists( $pt->{lat} )
+                  && exists( $pt->{lon} )
+                  && exists( $pt->{time} );
+            push @{ $self->{points} }, $pt;
+        }
+        else {
+            croak( "Don't know how to add "
+                  . ( defined( $pt ) ? $pt : '(undef)' ) );
         }
     }
 
@@ -73,18 +84,20 @@ sub add_points {
 
 sub get_points {
     my $self = shift;
-    
-    if ($self->{need_sort}) {
-        my $np = [ 
+
+    if ( $self->{need_sort} ) {
+        my $np = [
             sort { $a->{time} <=> $b->{time} }
-            grep { defined($_->{lat}) && 
-                   defined($_->{lon}) && 
-                   defined($_->{time}) } @{$self->{points}}
+              grep {
+                     defined( $_->{lat} )
+                  && defined( $_->{lon} )
+                  && defined( $_->{time} )
+              } @{ $self->{points} }
         ];
         $self->{points}    = $np;
         $self->{need_sort} = 0;
     }
-    
+
     return $self->{points};
 }
 
@@ -93,36 +106,38 @@ sub _search {
     my $pts  = shift;
     my $time = shift;
 
-    my $max  = scalar(@{$pts});
-    my ($lo, $mid, $hi) = ( 0, 0, $max-1 );
+    my $max = scalar( @{$pts} );
+    my ( $lo, $mid, $hi ) = ( 0, 0, $max - 1 );
 
     TRY:
-    while ($lo <= $hi) {
-        $mid = int(($lo + $hi) / 2);
+    while ( $lo <= $hi ) {
+        $mid = int( ( $lo + $hi ) / 2 );
         my $cmp = $pts->[$mid]->{time} <=> $time;
-        if ($cmp < 0) {
+        if ( $cmp < 0 ) {
             $lo = $mid + 1;
-        } elsif ($cmp > 0) {
+        }
+        elsif ( $cmp > 0 ) {
             $hi = $mid - 1;
-        } else {
+        }
+        else {
             last TRY;
         }
     }
 
-    while ($mid < $max && $pts->[$mid]->{time} < $time) {
+    while ( $mid < $max && $pts->[$mid]->{time} < $time ) {
         $mid++;
     }
 
-    return ($mid < $max) ? $mid : undef;
+    return ( $mid < $max ) ? $mid : undef;
 }
 
 sub _interp {
-    my ($lo, $mid, $hi, $val1, $val2) = @_;
+    my ( $lo, $mid, $hi, $val1, $val2 ) = @_;
     confess "$lo <= $mid <= $hi !"
-        unless $lo <= $mid && $mid <= $hi;
-    my $scale = $hi  - $lo;
+      unless $lo <= $mid && $mid <= $hi;
+    my $scale = $hi - $lo;
     my $posn  = $mid - $lo;
-    return ($val1 * ($scale - $posn) + $val2 * $posn) / $scale;
+    return ( $val1 * ( $scale - $posn ) + $val2 * $posn ) / $scale;
 }
 
 sub nearest {
@@ -130,55 +145,61 @@ sub nearest {
     my $time     = shift;
     my $max_dist = shift;
 
-    my $pts      = $self->get_points();
-    my $pos      = _search($pts, $time);
+    my $pts = $self->get_points();
+    my $pos = _search( $pts, $time );
 
-    return unless defined($pos);
+    return unless defined( $pos );
 
-    if ($pts->[$pos]->{time} == $time) {
+    if ( $pts->[$pos]->{time} == $time ) {
         # Exact match - just return the point
         my $pt = {
-            lat     => $pts->[$pos]->{lat},
-            lon     => $pts->[$pos]->{lon},
-            time    => $time
+            lat  => $pts->[$pos]->{lat},
+            lon  => $pts->[$pos]->{lon},
+            time => $time
         };
 
-        return wantarray ? ( $pt, $pts->[$pos]->{orig} || $pts->[$pos], 0 ) : $pt;
+        return
+          wantarray
+          ? ( $pt, $pts->[$pos]->{orig} || $pts->[$pos], 0 )
+          : $pt;
     }
 
     # If we're at the first point we can't
     # interpolate with anything.
     return if $pos == 0;
 
-    my ($p1, $p2) = @$pts[$pos-1, $pos];
+    my ( $p1, $p2 ) = @$pts[ $pos - 1, $pos ];
 
     # Linear interpolation between nearest points
-    my $lat = _interp($p1->{time}, $time, $p2->{time}, $p1->{lat}, $p2->{lat});
-    my $lon = _interp($p1->{time}, $time, $p2->{time}, $p1->{lon}, $p2->{lon});
+    my $lat = _interp( $p1->{time}, $time, $p2->{time}, $p1->{lat},
+        $p2->{lat} );
+    my $lon = _interp( $p1->{time}, $time, $p2->{time}, $p1->{lon},
+        $p2->{lon} );
 
     my $pt = {
-        lat     => $lat,
-        lon     => $lon,
-        time    => $time
+        lat  => $lat,
+        lon  => $lon,
+        time => $time
     };
 
-    my $best_dist   = 0;
-    my $best        = undef;
+    my $best_dist = 0;
+    my $best      = undef;
 
     # Compute nearest if we need to return it or check proximity
-    if (wantarray || defined($max_dist)) {
-        my $d1 = abs($pt->{time} - $p1->{time});
-        my $d2 = abs($pt->{time} - $p2->{time});
+    if ( wantarray || defined( $max_dist ) ) {
+        my $d1 = abs( $pt->{time} - $p1->{time} );
+        my $d2 = abs( $pt->{time} - $p2->{time} );
 
-        $best = ($d1 < $d2) ? $p1 : $p2;
-        $best_dist = hav_distance($pt, $best);
+        $best = ( $d1 < $d2 ) ? $p1 : $p2;
+        $best_dist = hav_distance( $pt, $best );
 
         # Nearest point out of range?
-        return if defined($max_dist) && $best_dist > $max_dist;
+        return if defined( $max_dist ) && $best_dist > $max_dist;
     }
 
     # Return a synthetic point
-    return wantarray ? ( $pt, $best->{orig} || $best, $best_dist ) : $pt;
+    return
+      wantarray ? ( $pt, $best->{orig} || $best, $best_dist ) : $pt;
 }
 
 sub _deg {
@@ -192,28 +213,29 @@ sub _rad {
 # From
 #  http://perldoc.perl.org/functions/sin.html
 sub _asin {
-    return atan2($_[0], sqrt(1 - $_[0] * $_[0]))
+    return atan2( $_[0], sqrt( 1 - $_[0] * $_[0] ) );
 }
 
 # Not a method
 sub hav_distance {
     my $dist = 0;
-    my ($lat1, $lon1);
-    while (my $pt = shift) {
-        my ($lat2, $lon2) = _rad($pt->{lat}, $pt->{lon});
-        if (defined($lat1)) {
-            my $sdlat = sin(($lat1 - $lat2) / 2.0);
-            my $sdlon = sin(($lon1 - $lon2) / 2.0);
-            my $res   = sqrt($sdlat * $sdlat
-                             + cos($lat1) * cos($lat2) * $sdlon * $sdlon);
-            if ($res > 1.0) {
+    my ( $lat1, $lon1 );
+    while ( my $pt = shift ) {
+        my ( $lat2, $lon2 ) = _rad( $pt->{lat}, $pt->{lon} );
+        if ( defined( $lat1 ) ) {
+            my $sdlat = sin( ( $lat1 - $lat2 ) / 2.0 );
+            my $sdlon = sin( ( $lon1 - $lon2 ) / 2.0 );
+            my $res = sqrt( $sdlat * $sdlat
+                  + cos( $lat1 ) * cos( $lat2 ) * $sdlon * $sdlon );
+            if ( $res > 1.0 ) {
                 $res = 1.0;
-            } elsif ($res < -1.0) {
+            }
+            elsif ( $res < -1.0 ) {
                 $res = -1.0;
             }
-            $dist += 2.0 * _asin($res);
+            $dist += 2.0 * _asin( $res );
         }
-        ($lat1, $lon1) = ($lat2, $lon2);
+        ( $lat1, $lon1 ) = ( $lat2, $lon2 );
     }
 
     return $dist * $EARTH_RADIUS;
@@ -379,3 +401,7 @@ RENDERED INACCURATE OR LOSSES SUSTAINED BY YOU OR THIRD PARTIES OR A
 FAILURE OF THE SOFTWARE TO OPERATE WITH ANY OTHER SOFTWARE), EVEN IF
 SUCH HOLDER OR OTHER PARTY HAS BEEN ADVISED OF THE POSSIBILITY OF
 SUCH DAMAGES.
+/bin/bash: -c: line 18: unexpected EOF while looking for matching ``'
+/bin/bash: -c: line 35: syntax error: unexpected end of file
+/bin/bash: -c: line 18: unexpected EOF while looking for matching ``'
+/bin/bash: -c: line 35: syntax error: unexpected end of file
